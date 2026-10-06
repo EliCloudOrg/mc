@@ -40,9 +40,12 @@ echo "[deploy] ref=$REF dir=$APP_DIR"
 #    移除，交给 compose 接管（容器名 mc-mc-1）。SQLite 数据在
 #    项目目录的 data/ 下，迁移前若旧目录有数据，请先手工 copy 过来（见 README-deploy.md）。
 
-PROJECT_NAME="mc"
+PROJECT_NAME="mc-svc"      # ⚠️ 不能叫 mc：MC 服务器那套栈的 compose 项目名就是 mc
+                           # （它的编排在 /home/docker-admin/mc/，项目名由目录名推导），
+                           # 撞名会让 docker compose 按项目名匹配到对方的容器并按本文件重建，
+                           # 2026-10-06 已实际踩到（见 README-deploy.md「项目名冲突」）。
+CONTAINER_NAME="mc"        # 与 compose 的 container_name 一致（这是服务 id）
 PROJECT_DIR="/home/deploy/elicloud-mc"
-CONTAINER_NAME="mc"        # 与 compose 的 container_name 一致
 APP_ENV="${APP_DIR}/app.env"
 COMPOSE_FILE="${PROJECT_DIR}/docker-compose.yml"
 GATEWAY_NETWORK="dsh-nas_dsh-net"
@@ -54,6 +57,35 @@ PULL_TIMEOUT=120                      # 秒；ghcr 拉取会卡，必须有上�
 command -v docker >/dev/null 2>&1 || { echo "[deploy] 找不到 docker" >&2; exit 1; }
 [[ -f "${APP_ENV}" ]] || { echo "[deploy] 缺少运行时变量文件 ${APP_ENV}" >&2; exit 1; }
 [[ -f "${COMPOSE_FILE}" ]] || { echo "[deploy] 缺少 ${COMPOSE_FILE}（代码还没放上去？）" >&2; exit 1; }
+
+# 0b) **防撞项目名**（2026-10-06 实际踩到的严重事故）：
+#     compose 会按「项目名」匹配已有容器，若本项目与别的栈撞名，`up -d` 可能
+#     按本文件去重建**别人的**容器。这里在执行任何 compose 命令之前先核对
+#     编排里声明的服务名与容器名，不一致就直接失败。
+python3 - "${COMPOSE_FILE}" "${PROJECT_NAME}" "${CONTAINER_NAME}" <<'PY' || exit 1
+import sys
+import yaml
+
+path, project, container = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path, encoding="utf-8") as fh:
+    doc = yaml.safe_load(fh)
+services = doc.get("services") or {}
+if list(services) != ["mc"]:
+    print(f"[deploy] 禁止：{path} 的服务名不是 ['mc']，实际 {list(services)}", file=sys.stderr)
+    sys.exit(1)
+name = services["mc"].get("container_name")
+if name != container:
+    print(f"[deploy] 禁止：container_name={name!r} 与预期 {container!r} 不一致", file=sys.stderr)
+    sys.exit(1)
+print(f"[deploy] 编排核对通过：project={project} service=mc container={container}")
+PY
+
+# 0c) 项目名核对：容器若已属别的 compose 项目，说明发生过撞名/手工创建，
+#     这里给出明确提示（第 3 步会做一次性迁移），而不是静默重建。
+existing="$(docker inspect "${CONTAINER_NAME}" -f '{{ index .Config.Labels "com.docker.compose.project" }}' 2>/dev/null || true)"
+if [ -n "${existing}" ] && [ "${existing}" != "${PROJECT_NAME}" ]; then
+  echo "[deploy] 提示：容器 ${CONTAINER_NAME} 现属项目 '${existing}'（本项目为 '${PROJECT_NAME}'），将按第 3 步迁移" >&2
+fi
 
 for net in "${GATEWAY_NETWORK}" "${MC_NETWORK}"; do
   docker network inspect "${net}" >/dev/null 2>&1 || {

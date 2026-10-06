@@ -86,7 +86,7 @@ snap 绕行（`/srv` 读变量、`/home` 交给 docker）、两张 external 网�
 | | 迁移前（手工） | 现在（框架化） |
 |---|---|---|
 | 项目目录 | `/home/docker-admin/elicloud/mc` | `/home/deploy/elicloud-mc` |
-| compose 项目名 | 无（`docker run` 起的裸容器） | `COMPOSE_PROJECT_NAME=mc`（带 compose 标签） |
+| compose 项目名 | 无（`docker run` 起的裸容器） | **`mc-svc`**（见下方「项目名冲突」一节；容器名仍是 `mc`） |
 | 运行时变量 | 项目目录里的 `.env`（600） | `/srv/mc/app.env`（600, deploy:deploy） |
 | 镜像 | 本地 `build` 的 `elicloud-mc:1.0.0` | `ghcr.io/elicloudorg/mc:prod` |
 
@@ -100,21 +100,29 @@ sudo cp -a /home/docker-admin/elicloud/mc/data/. /home/deploy/elicloud-mc/data/
 > ⚠️ 这一步不能省：`mc.db` 里是**绑定关系与审计**。丢了它，MC 侧白名单还在，
 > 但库里不认识那些名字（用户再申请同名会拿到 409 `name_taken`）。
 
+## ⚠️ 项目名冲突（2026-10-06 实际事故，务必先读）
 
-```bash
-# 1) 建目录并把代码/compose 放过去（docker 需要可见 /home 路径）
-sudo -u deploy install -d -m 0755 /home/deploy/elicloud-mc
-sudo -u deploy install -d -m 0755 /home/deploy/elicloud-mc/data
-# 2) 把 SQLite 从旧位置迁过来（否则等于换了一个空库：绑定与审计全丢）
-sudo cp -a /home/docker-admin/elicloud/mc/data/. /home/deploy/elicloud-mc/data/
-sudo chown -R deploy:deploy /home/deploy/elicloud-mc/data
-# 3) 停掉手工容器，让 compose 接管（容器名同为 mc，必须先后台化移除）
-docker rm -f mc
-# 4) 再由 deploy.sh 起新容器（compose up -d）
-```
+**MC 服务器那套栈的 compose 项目名就是 `mc`**（编排在 `/home/docker-admin/mc/docker-compose.yml`，
+项目名由目录名推导），所以**本服务的 compose 项目名绝对不能叫 `mc`**。
 
-> ⚠️ 第 2 步不能省：`data/mc.db` 里是**绑定关系与审计**。
-> 丢了它，白名单条目还在 MC 侧，但库里不认识它们（申请同名会得到 409 `name_taken`）。
+事故经过：本项目最初设了 `COMPOSE_PROJECT_NAME=mc`。`docker compose up -d` 会**按项目名匹配
+已有容器**，于是它把 MC 栈的 `urania-mc` 当成自己项目的容器，**用本项目的编排重建了它** ——
+`urania-mc` 的 `/data` 从原来的匿名卷（真正的 world 与服务端文件）被换成了
+`/home/deploy/elicloud-mc/data`，重启后因 `eula.txt` 写不进去（uid 1000 vs 目录属主 1002）
+进入崩溃循环，MC 服务器一度不可用。
+
+**现有约束（改名前请务必确认）**：
+
+| 标识 | 值 | 为什么 |
+|---|---|---|
+| 服务 id / 容器名 / 镜像 / `/srv` 路径 | `mc` | 对外身份，网关与文档都按它引用 |
+| **compose 项目名**（`COMPOSE_PROJECT_NAME`） | **`mc-svc`** | 避开 MC 栈的项目名 `mc`，否则会误重建别人的容器 |
+
+> 另有两个容易混的名字：MC 栈的服务名也叫 `mc`（容器名是 `urania-mc`）；
+> 而 `mc-backup-1` 的 `RCON_HOST=mc` 指的是**MC 栈自己的服务名**，与本服务无关。
+
+`deploy.sh` 已加**执行前校验**：核对 `docker-compose.yml` 的服务名必须是 `mc`、
+`container_name` 必须与预期一致，任一不符就直接失败——防止再次把别人的容器当自己的重建。
 
 
 ## GitHub 配置清单
