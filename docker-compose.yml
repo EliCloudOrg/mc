@@ -15,12 +15,13 @@
 
 services:
   mc-whitelist:
-    build:
-      context: .
-      # 镜像源可覆盖：国内服务器本地构建时用清华源（实测 1.4s vs pypi.org 12s+）
-      args:
-        PIP_INDEX_URL: "${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
-    image: elicloud-mc-whitelist:1.0.0
+    # 镜像由 deploy.sh 通过环境变量传入（DEPLOY_MODE=image 时是 Actions 推的 :prod/:sha-<short>；
+    # 拉取超时会回退到本机已有镜像）。要本地自己构建就显式给：
+    #   MCW_IMAGE=elicloud-mc-whitelist:1.0.0 docker compose build --build-arg PIP_INDEX_URL=...
+    image: "${MCW_IMAGE:?MCW_IMAGE 未设置：请由 deploy.sh 注入，或本地显式指定}"
+    # 与 sso 同一写法：项目名（COMPOSE_PROJECT_NAME=mc-whitelist）与容器名同名。
+    # 这样 deploy.sh 可以直接按容器名做健康检查，也能识别出「旧的手工部署容器」
+    # （它也叫 mc-whitelist 但不带 compose 项目标签）并做一次性迁移。
     container_name: mc-whitelist
     restart: unless-stopped
     user: "1002:1003"
