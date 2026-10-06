@@ -1,6 +1,6 @@
 """统一的错误响应结构与限流（与 `sso/app/errors.py` 同构）。
 
-错误结构（mc-whitelist.md §6）：``{"error": "...", "error_description": "..."}``
+错误结构（mc.md §6）：``{"error": "...", "error_description": "..."}``
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ def api_error(
 
 
 def rcon_unavailable(description: str = "MC 的 RCON 不可达或写入未被确认，请稍后重试") -> HTTPException:
-    """写入未被回读确认时的统一错误：**503**（mc-whitelist.md §6.4、§7）。"""
+    """写入未被回读确认时的统一错误：**503**（mc.md §6.4、§7）。"""
     return api_error(503, "rcon_unavailable", description, headers={"Retry-After": "30"})
 
 

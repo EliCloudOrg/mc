@@ -1,4 +1,4 @@
-"""鉴权与 scope（mc-whitelist.md §6.1、§9.1 的前几条）。"""
+"""鉴权与 scope（mc.md §6.1、§9.1 的前几条）。"""
 
 from __future__ import annotations
 

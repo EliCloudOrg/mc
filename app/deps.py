@@ -167,7 +167,7 @@ def require_admin(
         settings.admin_token.encode("utf-8"),
     )
     if not authorized:
-        logger.warning("mc-whitelist admin auth failed ip=%s", ip)
+        logger.warning("mc admin auth failed ip=%s", ip)
         # 绝不记录令牌原文
         raise api_error(403, "forbidden", "管理员令牌无效")
 

@@ -1,4 +1,4 @@
-"""SSO access token 验签（architecture.md §8 / mc-whitelist.md §6.1）。
+"""SSO access token 验签（architecture.md §8 / mc.md §6.1）。
 
 校验顺序与失败语义（全部 fail closed）：
 

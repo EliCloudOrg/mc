@@ -1,11 +1,11 @@
 """管理员命令行（决策 T2：**容器内 CLI 与 HTTP 管理接口都要**）。
 
-    docker compose exec mc-whitelist python -m app.cli show-config
-    docker compose exec mc-whitelist python -m app.cli list-names [--all]
-    docker compose exec mc-whitelist python -m app.cli list-audit [--limit 20]
-    docker compose exec mc-whitelist python -m app.cli whitelist-list
-    docker compose exec mc-whitelist python -m app.cli force-remove mn_0001
-    docker compose exec mc-whitelist python -m app.cli reconcile [--apply]
+    docker compose exec mc python -m app.cli show-config
+    docker compose exec mc python -m app.cli list-names [--all]
+    docker compose exec mc python -m app.cli list-audit [--limit 20]
+    docker compose exec mc python -m app.cli whitelist-list
+    docker compose exec mc python -m app.cli force-remove mn_0001
+    docker compose exec mc python -m app.cli reconcile [--apply]
 
 与 HTTP 侧走**同一套**业务函数（`whitelist.py`），不存在两套逻辑。
 """
@@ -42,7 +42,7 @@ def _print(payload: Any) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="python -m app.cli", description="mc-whitelist 管理员命令")
+    parser = argparse.ArgumentParser(prog="python -m app.cli", description="mc 管理员命令")
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("show-config", help="打印生效配置（不含 RCON 密码）")

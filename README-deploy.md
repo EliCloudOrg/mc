@@ -1,9 +1,9 @@
-# mc-whitelist 部署说明
+# mc 部署说明
 
 本仓库使用「GitHub Actions 触发 + 服务器自管」的自托管部署框架。
 
 框架只负责**触发和调用**，不关心项目怎么构建、怎么运行；一切具体部署逻辑都在服务器的
-`/srv/mc-whitelist/deploy.sh` 里。
+`/srv/mc/deploy.sh` 里。
 
 ## 部署架构
 
@@ -16,14 +16,14 @@
               │ CI  ci.yml       │  │ Deploy  deploy-prod.yml               │
               │  检出            │  │  ① (可选) 构建镜像 → ghcr.io          │
               │  安装依赖        │  │     仅当 vars.DEPLOY_MODE == image    │
-              │  测试            │  │  ② scp deploy/deploy.sh → /srv/mc-whitelist│
-              │  构建            │  │  ③ ssh 执行 /srv/mc-whitelist/deploy.sh REF│
+              │  测试            │  │  ② scp deploy/deploy.sh → /srv/mc│
+              │  构建            │  │  ③ ssh 执行 /srv/mc/deploy.sh REF│
               └──────────────────┘  │  environment: production（人工审批）  │
                                     └──────────────────┬────────────────────┘
                                                        │ SSH（deploy 用户 + 私钥）
                                                        ▼
                                     ┌───────────────────────────────────────┐
-                                    │ 服务器  /srv/mc-whitelist/                 │
+                                    │ 服务器  /srv/mc/                 │
                                     │   deploy.sh   ← 随仓库版本管理         │
                                     │   app.env     ← 运行时环境变量（600）  │
                                     │   项目自己的构建产物 / 容器 / 进程     │
@@ -43,10 +43,10 @@
 1. **服务器初始化**（root）
    ```bash
    scp scripts/bootstrap-server.sh ubuntu@146.56.237.33:/tmp/
-   ssh ubuntu@146.56.237.33 'sudo bash /tmp/bootstrap-server.sh mc-whitelist'
+   ssh ubuntu@146.56.237.33 'sudo bash /tmp/bootstrap-server.sh mc'
    ```
-   脚本会创建 `deploy` 用户、`/srv/mc-whitelist`（deploy:deploy 750）、空的
-   `/srv/mc-whitelist/app.env`，并把 deploy 加入 docker 组（若装了 Docker）。
+   脚本会创建 `deploy` 用户、`/srv/mc`（deploy:deploy 750）、空的
+   `/srv/mc/app.env`，并把 deploy 加入 docker 组（若装了 Docker）。
    > 本机 **`docker-admin` 没有免密 sudo**，只有 `ubuntu` 有（`(ALL) NOPASSWD: ALL`），
    > 所以这一步必须用 `ubuntu` 账号。本机 `deploy` 用户**已存在且已在 `docker` 组**
    > （`uid=1008(deploy) groups=...,1004(docker)`，实测），脚本会跳过这两步。
@@ -61,11 +61,11 @@
 4. **写实部署逻辑**：编辑仓库 `deploy/deploy.sh` 的「项目自定义部署逻辑」段，
    实现拉代码 / 装依赖 / 构建 / 重启服务。
 
-5. **填充运行时环境变量**：在服务器上编辑 `/srv/mc-whitelist/app.env`。
+5. **填充运行时环境变量**：在服务器上编辑 `/srv/mc/app.env`。
 
 6. **首次发布**：GitHub → Actions → **Deploy to production** → *Run workflow*，
    `ref` 填 `prod`。人工审批通过后，Actions 会把 `deploy.sh` 上传到
-   `/srv/mc-whitelist/deploy.sh` 并执行。
+   `/srv/mc/deploy.sh` 并执行。
 
 ## ✅ 部署逻辑已写实（`deploy.sh`）
 
@@ -76,8 +76,8 @@ snap 绕行（`/srv` 读变量、`/home` 交给 docker）、两张 external 网�
 健康检查（含 RCON 可达性）与回环 `/healthz` 自检。
 
 - **可运行副本**：[`docs/deploy-scenario.sh`](docs/deploy-scenario.sh)（与服务器上执行的是同一套逻辑，作为排错时的参照）。
-- **已实测**：首次执行把容器从手工部署迁移到 compose 管理（`PROJECT=mc-whitelist`），
-  SQLite 33 条审计全部保留；镜像最终切到 `ghcr.io/elicloudorg/mc-whitelist:prod`。
+- **已实测**：首次执行把容器从手工部署迁移到 compose 管理（`PROJECT=mc`），
+  SQLite 33 条审计全部保留；镜像最终切到 `ghcr.io/elicloudorg/mc:prod`。
 
 ### 一次性迁移已完成（2026-10-06）
 
@@ -85,35 +85,35 @@ snap 绕行（`/srv` 读变量、`/home` 交给 docker）、两张 external 网�
 
 | | 迁移前（手工） | 现在（框架化） |
 |---|---|---|
-| 项目目录 | `/home/docker-admin/elicloud/mc-whitelist` | `/home/deploy/elicloud-mc-whitelist` |
-| compose 项目名 | 无（`docker run` 起的裸容器） | `COMPOSE_PROJECT_NAME=mc-whitelist`（带 compose 标签） |
-| 运行时变量 | 项目目录里的 `.env`（600） | `/srv/mc-whitelist/app.env`（600, deploy:deploy） |
-| 镜像 | 本地 `build` 的 `elicloud-mc-whitelist:1.0.0` | `ghcr.io/elicloudorg/mc-whitelist:prod` |
+| 项目目录 | `/home/docker-admin/elicloud/mc` | `/home/deploy/elicloud-mc` |
+| compose 项目名 | 无（`docker run` 起的裸容器） | `COMPOSE_PROJECT_NAME=mc`（带 compose 标签） |
+| 运行时变量 | 项目目录里的 `.env`（600） | `/srv/mc/app.env`（600, deploy:deploy） |
+| 镜像 | 本地 `build` 的 `elicloud-mc:1.0.0` | `ghcr.io/elicloudorg/mc:prod` |
 
 `deploy.sh` 第 3 步会自动识别「同名但不属于本 compose 项目的容器」并先移除，
 所以这次迁移没有手工干预；**但 SQLite 数据必须人工搬**（脚本不碰数据）：
 
 ```bash
-sudo cp -a /home/docker-admin/elicloud/mc-whitelist/data/. /home/deploy/elicloud-mc-whitelist/data/
+sudo cp -a /home/docker-admin/elicloud/mc/data/. /home/deploy/elicloud-mc/data/
 ```
 
-> ⚠️ 这一步不能省：`mc-whitelist.db` 里是**绑定关系与审计**。丢了它，MC 侧白名单还在，
+> ⚠️ 这一步不能省：`mc.db` 里是**绑定关系与审计**。丢了它，MC 侧白名单还在，
 > 但库里不认识那些名字（用户再申请同名会拿到 409 `name_taken`）。
 
 
 ```bash
 # 1) 建目录并把代码/compose 放过去（docker 需要可见 /home 路径）
-sudo -u deploy install -d -m 0755 /home/deploy/elicloud-mc-whitelist
-sudo -u deploy install -d -m 0755 /home/deploy/elicloud-mc-whitelist/data
+sudo -u deploy install -d -m 0755 /home/deploy/elicloud-mc
+sudo -u deploy install -d -m 0755 /home/deploy/elicloud-mc/data
 # 2) 把 SQLite 从旧位置迁过来（否则等于换了一个空库：绑定与审计全丢）
-sudo cp -a /home/docker-admin/elicloud/mc-whitelist/data/. /home/deploy/elicloud-mc-whitelist/data/
-sudo chown -R deploy:deploy /home/deploy/elicloud-mc-whitelist/data
-# 3) 停掉手工容器，让 compose 接管（容器名同为 mc-whitelist，必须先后台化移除）
-docker rm -f mc-whitelist
+sudo cp -a /home/docker-admin/elicloud/mc/data/. /home/deploy/elicloud-mc/data/
+sudo chown -R deploy:deploy /home/deploy/elicloud-mc/data
+# 3) 停掉手工容器，让 compose 接管（容器名同为 mc，必须先后台化移除）
+docker rm -f mc
 # 4) 再由 deploy.sh 起新容器（compose up -d）
 ```
 
-> ⚠️ 第 2 步不能省：`data/mc-whitelist.db` 里是**绑定关系与审计**。
+> ⚠️ 第 2 步不能省：`data/mc.db` 里是**绑定关系与审计**。
 > 丢了它，白名单条目还在 MC 侧，但库里不认识它们（申请同名会得到 409 `name_taken`）。
 
 
@@ -170,7 +170,7 @@ gh variable set DEPLOY_MODE --body 'image'
 > （仍然是「必须走 PR」）；加了协作者后再调到 1（main）/ 2（prod）。
 
 > 注：`SSH_USER=deploy` 时 Actions 会把日志里的 "deploy" 打码成 `***`
-> （`Trigger remote ***`、`/srv/mc-whitelist` 显示成 `/srv/elicloud-***-test`），属正常行为。
+> （`Trigger remote ***`、`/srv/mc` 显示成 `/srv/elicloud-***-test`），属正常行为。
 
 ## 配置与密钥放置表
 
@@ -182,16 +182,16 @@ gh variable set DEPLOY_MODE --body 'image'
 | `GITHUB_TOKEN` | Actions 内置，无需配置 | 同仓库推 `ghcr.io` 镜像（靠 `packages: write`） |
 | `GHCR_TOKEN` | GitHub Secrets（仅跨仓库/外部 registry） | 推镜像的替代凭据 |
 | `DEPLOY_MODE` | GitHub Variables（**仓库级**） | `image` → 阶段一构建推镜像 |
-| 应用运行时环境变量（`DATABASE_URL`、`LOG_LEVEL`…） | 服务器 `/srv/mc-whitelist/app.env`（600，`deploy:deploy`） | 应用进程读取；不进仓库、不进 Actions |
-| 应用运行时密钥（DB 口令、第三方 API Key） | 服务器 `/srv/mc-whitelist/app.env` | 同上 |
-| Compose 变量（`IMAGE_TAG`、`COMPOSE_PROJECT_NAME`…） | 服务器 `/srv/mc-whitelist/app.env`（或 compose 同目录 `.env`） | `docker compose` 插值 |
+| 应用运行时环境变量（`DATABASE_URL`、`LOG_LEVEL`…） | 服务器 `/srv/mc/app.env`（600，`deploy:deploy`） | 应用进程读取；不进仓库、不进 Actions |
+| 应用运行时密钥（DB 口令、第三方 API Key） | 服务器 `/srv/mc/app.env` | 同上 |
+| Compose 变量（`IMAGE_TAG`、`COMPOSE_PROJECT_NAME`…） | 服务器 `/srv/mc/app.env`（或 compose 同目录 `.env`） | `docker compose` 插值 |
 | 部署 ref（`prod` / tag / commit SHA） | 由 Actions 作为参数传给 `deploy.sh` | 决定这次部署哪个版本 |
 | 人工运维用私钥 | 本机 `~/.ssh/`（Windows：`C:\Users\<you>\.ssh\...`） | 仅供人登录服务器，与 Actions 无关 |
 
 规则：**部署环节的凭据只走 GitHub Secrets；应用运行时的变量只在服务器 `app.env`。**
 两边都不要写进仓库，也不要在 workflow 里 `echo` 出来。
 
-### 本项目 `/srv/mc-whitelist/app.env` 的真实变量清单
+### 本项目 `/srv/mc/app.env` 的真实变量清单
 
 这些是**服务器上要填的值**（`.env.example` 是仓库里的模板，两者字段一致）：
 
@@ -201,7 +201,7 @@ gh variable set DEPLOY_MODE --body 'image'
 | `SSO_JWKS_URL` | `https://146.56.237.33/auth/.well-known/jwks.json` | 公钥集 |
 | `JWT_AUDIENCE` | `elicloud-services` | access token 的 `aud`（`id_token` 的 `aud` 是 client_id，会被拒） |
 | `REQUIRED_SCOPE` | `mc:whitelist` | 令牌必须含它，否则 403 `insufficient_scope` |
-| `DATABASE_URL` | `sqlite:////data/mc-whitelist.db` | 容器内路径；`/data` 由 compose 挂到项目目录 `data/` |
+| `DATABASE_URL` | `sqlite:////data/mc.db` | 容器内路径；`/data` 由 compose 挂到项目目录 `data/` |
 | `RCON_HOST` | `urania-mc` | 容器名；服务加入 `mc_default` 网络才解析得到 |
 | `RCON_PORT` | `25575` | MC 的 RCON 端口（不发布到宿主机） |
 | `RCON_PASSWORD` | 与 MC 容器 `RCON_PASSWORD` 一致 | **密钥**；取自 `docker inspect urania-mc` 的环境变量 |
@@ -231,21 +231,21 @@ gh variable set DEPLOY_MODE --body 'image'
 ```
 本机 ──push──▶ GitHub ──Actions──▶ SSH(deploy@146.56.237.33)
                                       │
-                                      ├─ scp deploy/deploy.sh → /srv/mc-whitelist/deploy.sh
-                                      └─ 执行 /srv/mc-whitelist/deploy.sh prod
+                                      ├─ scp deploy/deploy.sh → /srv/mc/deploy.sh
+                                      └─ 执行 /srv/mc/deploy.sh prod
                                              │
-                                             ├─ 读 /srv/mc-whitelist/app.env（snap docker 看不到 /srv）
-                                             ├─ 写 /home/deploy/elicloud-mc-whitelist/.env（docker 可见）
+                                             ├─ 读 /srv/mc/app.env（snap docker 看不到 /srv）
+                                             ├─ 写 /home/deploy/elicloud-mc/.env（docker 可见）
                                              └─ docker compose up -d
                                                     ├─ 网络：dsh-nas_dsh-net + mc_default
                                                     ├─ 端口：仅 127.0.0.1:8001（8000 已被 sso 占）
                                                     └─ 数据：./data → /data（SQLite）
 ```
 
-- **项目目录在 `/home/deploy/elicloud-mc-whitelist`**（不是 `/srv`，也不是旧的
-  `/home/docker-admin/elicloud/mc-whitelist`）：snap docker 看不到 `/srv`，而 `/home/docker-admin`
+- **项目目录在 `/home/deploy/elicloud-mc`**（不是 `/srv`，也不是旧的
+  `/home/docker-admin/elicloud/mc`）：snap docker 看不到 `/srv`，而 `/home/docker-admin`
   对 `deploy` 用户不可遍历，所以必须落在 `/home/deploy` 下。
-- `/srv/mc-whitelist/` 只放 `deploy.sh` 与 `app.env`。
+- `/srv/mc/` 只放 `deploy.sh` 与 `app.env`。
 
 ### ghcr 拉取风险（本项目最重要的一处环境约束）
 
@@ -275,14 +275,14 @@ gh variable set DEPLOY_MODE --body 'image'
 
 | 项 | 值 |
 |---|---|
-| 容器 | `mc-whitelist`（`/mc-whitelist`），compose 项目 `mc-whitelist`，`healthy` |
-| 镜像 | **`ghcr.io/elicloudorg/mc-whitelist:prod`**（切换前是手工构建的 `elicloud-mc-whitelist:1.0.0`） |
-| 项目目录 | `/home/deploy/elicloud-mc-whitelist`（`compose` + `data/`，`data` 属主 `1002:1003` = 容器运行用户） |
-| 运行时变量 | `/srv/mc-whitelist/app.env`（600, `deploy:deploy`） |
+| 容器 | `mc`（`/mc`），compose 项目 `mc`，`healthy` |
+| 镜像 | **`ghcr.io/elicloudorg/mc:prod`**（切换前是手工构建的 `elicloud-mc:1.0.0`） |
+| 项目目录 | `/home/deploy/elicloud-mc`（`compose` + `data/`，`data` 属主 `1002:1003` = 容器运行用户） |
+| 运行时变量 | `/srv/mc/app.env`（600, `deploy:deploy`） |
 | 数据 | SQLite 已从旧目录迁移：**33 条审计、3 条绑定历史全部保留** |
 | 网络 | `dsh-nas_dsh-net` + `mc_default`；仅 `127.0.0.1:8001` 回环映射 |
 | 网关 | `https://146.56.237.33/mc/healthz` → 200，`rcon.reachable=true` |
-| 旧目录 | `/home/docker-admin/elicloud/mc-whitelist`（手工部署遗留，容器已迁走；确认无用后可整目录删除，其中 `.env` 含旧的 `ADMIN_TOKEN`，**新值在 `/srv/mc-whitelist/app.env`**） |
+| 旧目录 | `/home/docker-admin/elicloud/mc`（手工部署遗留，容器已迁走；确认无用后可整目录删除，其中 `.env` 含旧的 `ADMIN_TOKEN`，**新值在 `/srv/mc/app.env`**） |
 
 发布与回滚都走 `deploy-prod.yml`：合并到 `prod` 自动部署；回滚用
 *Actions → Deploy to production → Run workflow*，`ref` 填旧的 `sha-<short>` 或提交 SHA
@@ -298,7 +298,7 @@ git switch -c feature/xxx
 git push -u origin feature/xxx        # 开 PR → main，等 CI 通过并合并
 ```
 然后发 PR：`main` → `prod`。合并到 `prod` 即自动走 `deploy-prod.yml`：
-先（可选）推镜像，再上传并执行 `/srv/mc-whitelist/deploy.sh prod`。
+先（可选）推镜像，再上传并执行 `/srv/mc/deploy.sh prod`。
 
 ## 回滚流程
 
@@ -315,7 +315,7 @@ git push -u origin feature/xxx        # 开 PR → main，等 CI 通过并合并
 
 2. **服务器上手工回滚**
    ```bash
-   sudo -u deploy /srv/mc-whitelist/deploy.sh <ref>
+   sudo -u deploy /srv/mc/deploy.sh <ref>
    ```
    适合 Actions 不可用时应急；注意这是绕过审批的路径，操作后请补记录。
 
@@ -327,14 +327,14 @@ git push -u origin feature/xxx        # 开 PR → main，等 CI 通过并合并
 
 | 现象 | 可能原因 | 处理 |
 |---|---|---|
-| Actions 里 scp 一步失败 | `SSH_HOST`/`SSH_USER`/`SSH_PORT` 写错；私钥与服务器公钥不匹配；`/srv/mc-whitelist` 不存在或不可写 | 用 `ssh -i deploy_key deploy@host` 复现；确认目录 `deploy:deploy 750` |
+| Actions 里 scp 一步失败 | `SSH_HOST`/`SSH_USER`/`SSH_PORT` 写错；私钥与服务器公钥不匹配；`/srv/mc` 不存在或不可写 | 用 `ssh -i deploy_key deploy@host` 复现；确认目录 `deploy:deploy 750` |
 | `deploy.sh: Permission denied` | 服务器上文件没有可执行位 | workflow 已 `chmod +x`；手工上传时记得 `chmod +x` |
 | `deploy.sh` 报 `bad interpreter: ...^M` | 上传/提交时带了 CRLF 换行 | `.gitattributes` 里加 `*.sh text eol=lf`，重新提交 |
 | ssh-action 提示超时 | 构建时间长于 `command_timeout` | 调大 `command_timeout`，或把耗时构建放到阶段一 |
 | 阶段一失败后阶段二没跑 | 这是设计行为：阶段一失败则部署中止 | 修好构建再重跑 |
 | 阶段二显示 skipped | `DEPLOY_MODE` 既不是 `image`，但同时阶段一被跳过时不应 skip | 检查 `deploy` job 的 `if` 条件是否被改动 |
 | 部署成功但应用没更新 | `deploy.sh` 里没有真正的重启/切换逻辑（骨架默认什么都不做） | 补齐 `deploy.sh` 的项目部署逻辑 |
-| Actions 拿不到运行时变量 | 运行时变量属于服务器 `app.env`，不在 Actions 里 | 在服务器上编辑 `/srv/mc-whitelist/app.env` |
+| Actions 拿不到运行时变量 | 运行时变量属于服务器 `app.env`，不在 Actions 里 | 在服务器上编辑 `/srv/mc/app.env` |
 
 ## 相关文件与配置位置
 
@@ -342,8 +342,8 @@ git push -u origin feature/xxx        # 开 PR → main，等 CI 通过并合并
 |---|---|---|
 | CI 工作流 | `.github/workflows/ci.yml` | PR 到 main/prod、push 到 main |
 | 部署工作流 | `.github/workflows/deploy-prod.yml` | push 到 prod、workflow_dispatch |
-| 部署脚本（版本管理） | `deploy/deploy.sh` | 上传到 `/srv/mc-whitelist/deploy.sh` 执行 |
+| 部署脚本（版本管理） | `deploy/deploy.sh` | 上传到 `/srv/mc/deploy.sh` 执行 |
 | 服务器初始化脚本 | `scripts/bootstrap-server.sh` | 在服务器上以 root 跑一次 |
 | 部署密钥与服务器信息 | GitHub Secrets | `SSH_HOST`/`SSH_USER`/`SSH_KEY`/`SSH_PORT` |
 | 部署模式开关 | GitHub Variables | `DEPLOY_MODE=image` 才构建推镜像 |
-| 运行时环境变量 | 服务器 `/srv/mc-whitelist/app.env` | 600，`deploy:deploy`，不进仓库 |
+| 运行时环境变量 | 服务器 `/srv/mc/app.env` | 600，`deploy:deploy`，不进仓库 |

@@ -2,7 +2,7 @@
 
 三处归属（deploy-framework.md §2.4）：
 
-* 运行时变量 → 服务器 `/srv/mc-whitelist/app.env`（600），由 `deploy.sh` 读出后注入容器；
+* 运行时变量 → 服务器 `/srv/mc/app.env`（600），由 `deploy.sh` 读出后注入容器；
 * 可版本化的默认值 → 本文件与 `docker-compose.yml`；
 * **`RCON_PASSWORD` 只从环境变量来，没有默认值** —— 缺了就直接启动失败（fail closed），
   绝不允许"忘了配密码却照常跑起来"。
@@ -24,16 +24,16 @@ class Settings(BaseSettings):
     sso_issuer: str = "https://146.56.237.33/auth"
     sso_jwks_url: str = "https://146.56.237.33/auth/.well-known/jwks.json"
     jwt_audience: str = "elicloud-services"
-    # T1（mc-whitelist.md §12.2）：令牌必须含该 scope；空串 = 关闭校验（仅限本地调试）
+    # T1（mc.md §12.2）：令牌必须含该 scope；空串 = 关闭校验（仅限本地调试）
     required_scope: str = "mc:whitelist"
     jwks_cache_seconds: int = 300
     jwt_leeway_seconds: int = 30  # exp/nbf 的时钟偏移容忍
     jwks_timeout_seconds: float = 5.0
 
     # ---- 存储 ---------------------------------------------------------------
-    database_url: str = "sqlite:////data/mc-whitelist.db"
+    database_url: str = "sqlite:////data/mc.db"
 
-    # ---- RCON（mc-whitelist.md §5）-----------------------------------------
+    # ---- RCON（mc.md §5）-----------------------------------------
     rcon_host: str = "urania-mc"
     rcon_port: int = 25575
     # 没有默认值：缺 RCON_PASSWORD 即启动失败
@@ -89,7 +89,7 @@ class Settings(BaseSettings):
     @classmethod
     def _check_rcon_password(cls, value: str) -> str:
         if not value or not value.strip():
-            raise ValueError("RCON_PASSWORD 不能为空（放在服务器 /srv/mc-whitelist/app.env）")
+            raise ValueError("RCON_PASSWORD 不能为空（放在服务器 /srv/mc/app.env）")
         return value
 
     @field_validator("rcon_port")

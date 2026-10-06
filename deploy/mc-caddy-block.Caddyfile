@@ -1,5 +1,5 @@
 # ============================================================
-# EliCloud MC 白名单服务（容器 mc-whitelist:8000）—— 追加于 dsh-nas Caddyfile
+# EliCloud MC 白名单服务（容器 mc:8000）—— 追加于 dsh-nas Caddyfile
 #
 # 为什么单独一个站点块：DSH 面板站点上有**不带 matcher 的 basic_auth 兜底指令**，
 # 把 /mc/* 并进面板站点块会被它拦下（同一个坑在 SSO 上已经踩过一次，见 docs/sso-oidc.md §8）。
@@ -28,6 +28,6 @@ https://146.56.237.33/mc/* {
 
 	handle /mc/* {
 		uri strip_prefix /mc
-		reverse_proxy mc-whitelist:8000
+		reverse_proxy mc:8000
 	}
 }

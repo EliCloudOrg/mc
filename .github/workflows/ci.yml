@@ -1,4 +1,4 @@
-# CI —— mc-whitelist（Python 3.12 / FastAPI）
+# CI —— mc（Python 3.12 / FastAPI）
 #
 # 触发与权限按框架固定不动（references/ci-recipes.md 的通用骨架）。
 # 步骤块取「Python / pip」配方，并替换成**本仓库真实存在**的命令：
@@ -51,7 +51,7 @@ jobs:
       - name: Import check
         env:
           RCON_PASSWORD: ci-dummy-not-a-real-secret
-          DATABASE_URL: sqlite:////tmp/mc-whitelist-ci.db
+          DATABASE_URL: sqlite:////tmp/mc-ci.db
           SSO_ISSUER: https://146.56.237.33/auth
           SSO_JWKS_URL: https://146.56.237.33/auth/.well-known/jwks.json
           JWT_AUDIENCE: elicloud-services

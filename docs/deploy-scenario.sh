@@ -3,7 +3,7 @@ set -euo pipefail
 
 # 远程部署入口。按自托管部署框架约定（docs/deploy-framework.md）：
 #
-#   /srv/mc-whitelist/deploy.sh [ref]
+#   /srv/mc/deploy.sh [ref]
 #
 # 形态（决策 T7：**先手工部署**）：
 #   代码由人工 scp/rsync 到 docker 可见的项目目录，本脚本负责
@@ -11,7 +11,7 @@ set -euo pipefail
 #   等 CI/CD 补上（T7 的"后补"）后，按 sso/deploy/deploy.sh 的形状改成
 #   「Actions 构建推镜像 → 这里拉镜像」，本脚本其余部分不用动。
 #
-# 为什么这么绕（与 sso 同一组本机约束，详见 docs/mc-whitelist.md §8.3）：
+# 为什么这么绕（与 sso 同一组本机约束，详见 docs/mc.md §8.3）：
 #   1. Docker 是 snap 装的，**看不到 /srv**：所以本脚本（bash，不受 snap 限制）
 #      在 /srv 侧读 app.env，写到 /home 下 docker 可见的项目目录；
 #      交给 docker 的只有 /home 路径（`--env-file /srv/...` 会失败）；
@@ -20,11 +20,11 @@ set -euo pipefail
 # ============================================================
 
 REF="${1:-prod}"
-APP_DIR="/srv/mc-whitelist"
+APP_DIR="/srv/mc"
 APP_ENV="${APP_DIR}/app.env"
 
-PROJECT_NAME="mc-whitelist"
-PROJECT_DIR="/home/docker-admin/elicloud/mc-whitelist"
+PROJECT_NAME="mc"
+PROJECT_DIR="/home/docker-admin/elicloud/mc"
 COMPOSE_FILE="${PROJECT_DIR}/docker-compose.yml"
 GATEWAY_NETWORK="dsh-nas_dsh-net"
 MC_NETWORK="mc_default"
@@ -64,7 +64,7 @@ docker compose --project-directory "${PROJECT_DIR}" -f "${COMPOSE_FILE}" up -d
 # ---------- 3) 等健康检查通过（healthcheck 含 RCON 可达性，§5.7） ----------
 deadline=$(( $(date +%s) + HEALTH_TIMEOUT ))
 while :; do
-  status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' mc-whitelist 2>/dev/null || echo missing)"
+  status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' mc 2>/dev/null || echo missing)"
   case "${status}" in
     healthy)
       echo "[deploy] 容器健康：${status}"
@@ -72,18 +72,18 @@ while :; do
       ;;
     unhealthy)
       echo "[deploy] 健康检查失败（注意 healthcheck 含 RCON 可达性），最近日志：" >&2
-      docker logs --tail 50 mc-whitelist >&2 2>&1 || true
+      docker logs --tail 50 mc >&2 2>&1 || true
       exit 1
       ;;
     missing|exited|dead)
       echo "[deploy] 容器状态异常：${status}，最近日志：" >&2
-      docker logs --tail 50 mc-whitelist >&2 2>&1 || true
+      docker logs --tail 50 mc >&2 2>&1 || true
       exit 1
       ;;
   esac
   if [ "$(date +%s)" -ge "${deadline}" ]; then
     echo "[deploy] 等待健康检查超时（${HEALTH_TIMEOUT}s），当前状态：${status}" >&2
-    docker logs --tail 50 mc-whitelist >&2 2>&1 || true
+    docker logs --tail 50 mc >&2 2>&1 || true
     exit 1
   fi
   sleep 5

@@ -15,7 +15,7 @@ set -euo pipefail
 # 不做什么：不安装 Docker、不拉代码、不构建、不写 systemd —— 那些由项目在
 #           /srv/<app>/deploy.sh 与服务器运维中自行决定。
 
-APP="${1:-mc-whitelist}"
+APP="${1:-mc}"
 APP_DIR="/srv/${APP}"
 DEPLOY_USER="deploy"
 DEPLOY_HOME="/home/${DEPLOY_USER}"

@@ -3,7 +3,7 @@ set -euo pipefail
 
 # 远程部署入口。由 GitHub Actions（.github/workflows/deploy-prod.yml）通过 SSH 调用：
 #
-#   /srv/mc-whitelist/deploy.sh [ref]
+#   /srv/mc/deploy.sh [ref]
 #
 # 约定：
 #   - 参数：要部署的 Git ref，默认 prod
@@ -11,10 +11,10 @@ set -euo pipefail
 #   - 失败必须非 0 退出（set -e 已保证，但请勿自己吞掉错误）
 #   - 本文件由仓库 deploy/deploy.sh 同步而来，不要在服务器上直接改；
 #     改动请提交到仓库，再由 deploy-prod.yml 上传
-#   - 运行时环境变量放在 /srv/mc-whitelist/app.env，不要写进本文件
+#   - 运行时环境变量放在 /srv/mc/app.env，不要写进本文件
 
 REF="${1:-prod}"
-APP_DIR="/srv/mc-whitelist"
+APP_DIR="/srv/mc"
 
 cd "$APP_DIR"
 
@@ -36,13 +36,13 @@ echo "[deploy] ref=$REF dir=$APP_DIR"
 #      mc_default（连 urania-mc 的 RCON）；后者在 mc 被 `compose down` 重建后会消失，
 #      所以这里先检查并给出可操作的报错。
 #
-# ⚠️ 一次性迁移：本脚本首次执行时，会把此前「手工部署」的容器（容器名 mc-whitelist）
-#    移除，交给 compose 接管（容器名 mc-whitelist-mc-whitelist-1）。SQLite 数据在
+# ⚠️ 一次性迁移：本脚本首次执行时，会把此前「手工部署」的容器（容器名 mc）
+#    移除，交给 compose 接管（容器名 mc-mc-1）。SQLite 数据在
 #    项目目录的 data/ 下，迁移前若旧目录有数据，请先手工 copy 过来（见 README-deploy.md）。
 
-PROJECT_NAME="mc-whitelist"
-PROJECT_DIR="/home/deploy/elicloud-mc-whitelist"
-CONTAINER_NAME="mc-whitelist"        # 与 compose 的 container_name 一致
+PROJECT_NAME="mc"
+PROJECT_DIR="/home/deploy/elicloud-mc"
+CONTAINER_NAME="mc"        # 与 compose 的 container_name 一致
 APP_ENV="${APP_DIR}/app.env"
 COMPOSE_FILE="${PROJECT_DIR}/docker-compose.yml"
 GATEWAY_NETWORK="dsh-nas_dsh-net"
@@ -66,10 +66,10 @@ done
 # 从 app.env 安全取值：不做 shell eval，避免值里的特殊字符被当作命令执行
 env_get() { sed -n "s/^$1=//p" "${APP_ENV}" | tail -n 1; }
 
-IMAGE_REPO="$(env_get MCW_IMAGE_REPO)"; IMAGE_REPO="${IMAGE_REPO:-ghcr.io/elicloudorg/mc-whitelist}"
+IMAGE_REPO="$(env_get MCW_IMAGE_REPO)"; IMAGE_REPO="${IMAGE_REPO:-ghcr.io/elicloudorg/mc}"
 IMAGE_TAG="${MCW_IMAGE_TAG:-$(env_get MCW_IMAGE_TAG)}"; IMAGE_TAG="${IMAGE_TAG:-prod}"
 IMAGE="${IMAGE_REPO}:${IMAGE_TAG}"
-FALLBACK_IMAGE="elicloud-mc-whitelist:1.0.0"
+FALLBACK_IMAGE="elicloud-mc:1.0.0"
 
 # ---------- 1) 运行时变量：/srv → /home（docker 只认 /home） ----------
 {
@@ -99,11 +99,11 @@ fi
 echo "${USE_IMAGE}" > /tmp/mcw-use-image
 
 # ---------- 3) 一次性迁移：清掉不属本 compose 项目的同名容器 ----------
-if docker inspect mc-whitelist >/dev/null 2>&1; then
-  existing_project="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' mc-whitelist 2>/dev/null || true)"
+if docker inspect mc >/dev/null 2>&1; then
+  existing_project="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' mc 2>/dev/null || true)"
   if [ "${existing_project}" != "${PROJECT_NAME}" ]; then
-    echo "[deploy] 迁移：现有 mc-whitelist 容器属于旧部署（project='${existing_project:-非 compose}'），先移除"
-    docker rm -f mc-whitelist >/dev/null
+    echo "[deploy] 迁移：现有 mc 容器属于旧部署（project='${existing_project:-非 compose}'），先移除"
+    docker rm -f mc >/dev/null
   fi
 fi
 

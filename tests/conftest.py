@@ -43,7 +43,7 @@ from tests.helpers import (  # noqa: E402
     make_token,
 )
 
-_TEST_DIR = Path(tempfile.mkdtemp(prefix="mc-whitelist-tests-"))
+_TEST_DIR = Path(tempfile.mkdtemp(prefix="mc-tests-"))
 
 _JWKS = FakeJwksServer(TEST_KEY, TEST_KID, max_age=300).start()
 _RCON = FakeRconServer(TEST_RCON_PASSWORD).start()
@@ -54,7 +54,7 @@ os.environ.update(
         "SSO_JWKS_URL": _JWKS.url,
         "JWT_AUDIENCE": TEST_AUDIENCE,
         "REQUIRED_SCOPE": TEST_REQUIRED_SCOPE,
-        "DATABASE_URL": f"sqlite:///{(_TEST_DIR / 'mc-whitelist-test.db').as_posix()}",
+        "DATABASE_URL": f"sqlite:///{(_TEST_DIR / 'mc-test.db').as_posix()}",
         "RCON_HOST": "127.0.0.1",
         "RCON_PORT": str(_RCON.port),
         "RCON_PASSWORD": TEST_RCON_PASSWORD,

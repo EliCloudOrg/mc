@@ -1,6 +1,6 @@
-# EliCloud MC 白名单服务（`mc-whitelist`）
+# EliCloud MC 白名单服务（`mc`）
 
-> 规格与唯一真源：[`docs/mc-whitelist.md`](../docs/mc-whitelist.md)（740 行，含线上实测证据）。
+> 规格与唯一真源：[`docs/mc.md`](../docs/mc.md)（740 行，含线上实测证据）。
 > 本文件是**实现与运维手册**：环境变量、启动方式、API 摘要、RCON 语义、部署步骤、排错与验收。
 
 ## 一句话
@@ -9,7 +9,7 @@
 服务校验通过后立即通过 RCON 把该用户名写入 `urania-mc` 的白名单，全过程留审计。**
 
 ```text
-前端/客户端 ──Bearer <SSO access_token>──► mc-whitelist:8000 ──RCON──► urania-mc:25575
+前端/客户端 ──Bearer <SSO access_token>──► mc:8000 ──RCON──► urania-mc:25575
    (OIDC 授权码+PKCE)                          │                        (whitelist add/remove/list)
                                                └── SQLite：绑定 / 审计 / 快照
 ```
@@ -20,7 +20,7 @@
 ## 目录结构
 
 ```text
-mc-whitelist/
+mc/
 ├── app/
 │   ├── main.py         # FastAPI 装配、CORS、统一错误处理、访问日志（/docs 全关）
 │   ├── config.py       # 全部配置来自环境变量（RCON_PASSWORD 无默认值 → 缺了启动失败）
@@ -36,7 +36,7 @@ mc-whitelist/
 │       ├── names.py    # /v1/names、/v1/me
 │       └── ops.py      # /healthz、/v1/admin/*
 ├── tests/              # 92 个用例：假 RCON 服务器 + 假 JWKS 服务，不依赖真实 MC
-├── deploy/deploy.sh    # 部署框架入口（/srv/mc-whitelist/deploy.sh）
+├── deploy/deploy.sh    # 部署框架入口（/srv/mc/deploy.sh）
 ├── Dockerfile / docker-compose.yml / .env.example
 └── README.md
 ```
@@ -51,9 +51,9 @@ mc-whitelist/
 | `REQUIRED_SCOPE` | `mc:whitelist` | 令牌必须含它，否则 `403 insufficient_scope`；**空串 = 关闭校验，只允许本地调试** |
 | `JWKS_CACHE_SECONDS` | `300` | JWKS 缓存的兜底 TTL（响应头没有 `max-age` 时用） |
 | `JWT_LEEWAY_SECONDS` | `30` | `exp`/`nbf` 的时钟偏移容忍 |
-| `DATABASE_URL` | `sqlite:////data/mc-whitelist.db` | 挂卷持久化 |
+| `DATABASE_URL` | `sqlite:////data/mc.db` | 挂卷持久化 |
 | `RCON_HOST` / `RCON_PORT` | `urania-mc` / `25575` | 只经 `mc_default` 内网可达 |
-| `RCON_PASSWORD` | **无默认值** | 只放服务器 `/srv/mc-whitelist/app.env`（600）；缺了直接启动失败 |
+| `RCON_PASSWORD` | **无默认值** | 只放服务器 `/srv/mc/app.env`（600）；缺了直接启动失败 |
 | `RCON_TIMEOUT` | `5` | 建连 + 读写各自的超时 |
 | `MAX_NAMES_PER_USER` | `2` | 每个 `sub` 的 active 名额上限 |
 | `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | 供将来浏览器直连 |
@@ -131,18 +131,18 @@ pytest -q                                          # 92 passed，不需要真实
 ### 首次部署（手工，决策 T7）
 
 ```text
-1. 服务器：建 /srv/mc-whitelist（deploy:deploy 750）与 /srv/mc-whitelist/app.env（600）
+1. 服务器：建 /srv/mc（deploy:deploy 750）与 /srv/mc/app.env（600）
 2. app.env 里填 RCON_PASSWORD（从 MC 容器取，见下）等运行时变量
-3. 代码放到 docker 可见的项目目录 /home/docker-admin/elicloud/mc-whitelist（data/ 属主 1002:1003）
-4. deploy/deploy.sh 放到 /srv/mc-whitelist/deploy.sh
-5. sudo -u deploy /srv/mc-whitelist/deploy.sh prod     # 注入变量 → build → up -d → 健康检查
+3. 代码放到 docker 可见的项目目录 /home/docker-admin/elicloud/mc（data/ 属主 1002:1003）
+4. deploy/deploy.sh 放到 /srv/mc/deploy.sh
+5. sudo -u deploy /srv/mc/deploy.sh prod     # 注入变量 → build → up -d → 健康检查
 6. 网关：给 dsh-nas 的 Caddyfile 追加 /mc/* 独立站点块 → caddy validate → caddy reload
 ```
 
 **取 RCON 密码**（不落盘、不进日志、不进本对话）：
 
 ```bash
-sudo docker exec urania-mc printenv RCON_PASSWORD      # 然后填进 /srv/mc-whitelist/app.env
+sudo docker exec urania-mc printenv RCON_PASSWORD      # 然后填进 /srv/mc/app.env
 ```
 
 **为什么 deploy.sh 要绕一层**：本机 Docker 是 snap 装的，**看不到 `/srv`**，
@@ -157,7 +157,7 @@ https://146.56.237.33/mc/* {
 	log
 	handle /mc/* {
 		uri strip_prefix /mc
-		reverse_proxy mc-whitelist:8000
+		reverse_proxy mc:8000
 	}
 }
 ```
@@ -188,15 +188,15 @@ docker exec urania-mc grep -E '^white-list|^enforce-whitelist' /data/server.prop
 ## 运维与排错
 
 ```bash
-cd /home/docker-admin/elicloud/mc-whitelist
+cd /home/docker-admin/elicloud/mc
 docker compose ps
-docker compose logs -f mc-whitelist
+docker compose logs -f mc
 curl -s http://127.0.0.1:8001/healthz               # 仅回环映射（8000 已被 sso 占用）
-docker compose exec mc-whitelist python -m app.cli list-names
-docker compose exec mc-whitelist python -m app.cli list-audit --limit 20
-docker compose exec mc-whitelist python -m app.cli whitelist-list
-docker compose exec mc-whitelist python -m app.cli reconcile --apply
-docker compose exec mc-whitelist python -m app.cli force-remove mn_0001
+docker compose exec mc python -m app.cli list-names
+docker compose exec mc python -m app.cli list-audit --limit 20
+docker compose exec mc python -m app.cli whitelist-list
+docker compose exec mc python -m app.cli reconcile --apply
+docker compose exec mc python -m app.cli force-remove mn_0001
 ```
 
 | 现象 | 排查顺序 |
@@ -207,9 +207,9 @@ docker compose exec mc-whitelist python -m app.cli force-remove mn_0001
 | `/healthz` 报 `reachable=false` | MC 容器是否在跑；`mc_default` 网络是否还在（`mc` 被 `compose down` 重建会让它消失 → 重跑 `deploy.sh`）；容器是否同时加入两张网 |
 | `whitelist add` 成功但玩家进不去 | 白名单是否真的启用；UUID=随机 v4 的行不生效（§12.1） |
 | 库里说加了、白名单里没有 | `python -m app.cli reconcile`；`audit_logs` 里找该条的 RCON 原文与 `result` |
-| 重建 MC 容器后连不上 RCON | 网络重建导致；`docker compose up -d --force-recreate mc-whitelist` |
+| 重建 MC 容器后连不上 RCON | 网络重建导致；`docker compose up -d --force-recreate mc` |
 
-**备份**：`./data/mc-whitelist.db`（绑定 + 审计）。白名单本身由 MC 侧备份。
+**备份**：`./data/mc.db`（绑定 + 审计）。白名单本身由 MC 侧备份。
 
 ## 验收（§9）
 

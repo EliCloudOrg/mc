@@ -1,6 +1,6 @@
 """FastAPI 应用装配。
 
-服务内路由（对外由网关剥掉 `/mc` 前缀，见 mc-whitelist.md §6.3）：
+服务内路由（对外由网关剥掉 `/mc` 前缀，见 mc.md §6.3）：
 
     POST   /v1/names              DELETE /v1/names/{id}      GET /v1/me
     GET    /v1/names              GET    /healthz
@@ -31,7 +31,7 @@ from .models import ACTION_DENY
 from .routers import names, ops
 from .whitelist import audit
 
-logger = logging.getLogger("mc-whitelist")
+logger = logging.getLogger("mc")
 
 # 400 也留痕（§10 第 10 条），但按 IP 限流：有效令牌的客户端刷畸形请求不该刷爆审计表
 INVALID_REQUEST_AUDIT_ATTEMPTS = 60
@@ -48,13 +48,13 @@ def configure_logging(level: str) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings: Settings = app.state.settings
-    logger.info("mc-whitelist starting version=%s %s", __version__, settings.log_summary())
+    logger.info("mc starting version=%s %s", __version__, settings.log_summary())
     if not settings.scope_enforced:
         logger.warning("REQUIRED_SCOPE 为空：scope 校验已关闭（只应在本地调试时如此）")
     if not settings.admin_token:
         logger.warning("ADMIN_TOKEN 未配置：/v1/admin/* 整组 403（fail closed）")
     yield
-    logger.info("mc-whitelist stopped")
+    logger.info("mc stopped")
 
 
 def _audit_invalid_request(request: Request, details: list[dict[str, object]]) -> None:

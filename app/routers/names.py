@@ -1,4 +1,4 @@
-"""用户自助端点：`/v1/names`、`/v1/me`（mc-whitelist.md §6.2）。
+"""用户自助端点：`/v1/names`、`/v1/me`（mc.md §6.2）。
 
 身份与 scope 由 `CurrentIdentity` 依赖统一强制（所有 `/v1/*` 都要求含 `mc:whitelist`）。
 """

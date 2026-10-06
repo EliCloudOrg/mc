@@ -1,4 +1,4 @@
-"""运维端点：`/healthz` 与 `/v1/admin/*`（mc-whitelist.md §5.7、§6.2、决策 T2）。
+"""运维端点：`/healthz` 与 `/v1/admin/*`（mc.md §5.7、§6.2、决策 T2）。
 
 管理接口用 `ADMIN_TOKEN` 保护，**未配置时整组 403**（fail closed）。
 CLI 侧同构的入口见 `app/cli.py`。

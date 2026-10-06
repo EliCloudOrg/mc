@@ -85,7 +85,7 @@ jobs:
         # deploy/deploy.sh。约定是「同一个 deploy.sh 用另一个 ref 再跑一次」：
         # 回滚不应把老的部署脚本也一起带回来（见 README-deploy.md 回滚流程）。
 
-      - name: Upload deploy script to /srv/mc-whitelist
+      - name: Upload deploy script to /srv/mc
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -93,12 +93,12 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
           source: deploy/deploy.sh
-          target: /srv/mc-whitelist
-          # source 是 deploy/deploy.sh，去掉第一段路径后落成 /srv/mc-whitelist/deploy.sh
+          target: /srv/mc
+          # source 是 deploy/deploy.sh，去掉第一段路径后落成 /srv/mc/deploy.sh
           strip_components: 1
           overwrite: true
 
-      - name: Run /srv/mc-whitelist/deploy.sh
+      - name: Run /srv/mc/deploy.sh
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -109,5 +109,5 @@ jobs:
           command_timeout: 30m
           script: |
             set -eu
-            chmod +x /srv/mc-whitelist/deploy.sh
-            /srv/mc-whitelist/deploy.sh "${{ github.event.inputs.ref || 'prod' }}"
+            chmod +x /srv/mc/deploy.sh
+            /srv/mc/deploy.sh "${{ github.event.inputs.ref || 'prod' }}"

@@ -1,6 +1,6 @@
 """表结构（SQLite，TEXT + ISO8601，与 SSO 同风格）。
 
-对应 mc-whitelist.md §4：
+对应 mc.md §4：
 
 * ``mc_names``        —— 用户名 ↔ SSO 账号 的绑定（一行 = 一次申请）
 * ``audit_logs``      —— 全量审计（成功与失败都留痕）

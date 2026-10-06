@@ -1,5 +1,5 @@
 # ============================================================
-# EliCloud MC 白名单服务 —— 部署编排（形状见 docs/mc-whitelist.md §3.3）
+# EliCloud MC 白名单服务 —— 部署编排（形状见 docs/mc.md §3.3）
 #
 # 为什么是两张 external 网络：
 #   dsh-nas_dsh-net —— 网关按容器名反代（只暴露给 Caddy，不发布公网端口）
@@ -9,20 +9,20 @@
 # 注意：
 #   1. 8000 只绑回环供本机 curl 调试；宿主机 8000 已被 sso 占用，所以这里用 8001；
 #   2. ./data 是 SQLite 落点，属主必须是 1002:1003（宿主机 docker-admin），绝不进镜像；
-#   3. RCON_PASSWORD 不写在这里：由服务器 /srv/mc-whitelist/app.env 注入（§3.5），
+#   3. RCON_PASSWORD 不写在这里：由服务器 /srv/mc/app.env 注入（§3.5），
 #      本文件只声明「必须提供」，缺了直接启动失败（fail closed）。
 # ============================================================
 
 services:
-  mc-whitelist:
+  mc:
     # 镜像由 deploy.sh 通过环境变量传入（DEPLOY_MODE=image 时是 Actions 推的 :prod/:sha-<short>；
     # 拉取超时会回退到本机已有镜像）。要本地自己构建就显式给：
-    #   MCW_IMAGE=elicloud-mc-whitelist:1.0.0 docker compose build --build-arg PIP_INDEX_URL=...
+    #   MCW_IMAGE=elicloud-mc:1.0.0 docker compose build --build-arg PIP_INDEX_URL=...
     image: "${MCW_IMAGE:?MCW_IMAGE 未设置：请由 deploy.sh 注入，或本地显式指定}"
-    # 与 sso 同一写法：项目名（COMPOSE_PROJECT_NAME=mc-whitelist）与容器名同名。
+    # 与 sso 同一写法：项目名（COMPOSE_PROJECT_NAME=mc）与容器名同名。
     # 这样 deploy.sh 可以直接按容器名做健康检查，也能识别出「旧的手工部署容器」
-    # （它也叫 mc-whitelist 但不带 compose 项目标签）并做一次性迁移。
-    container_name: mc-whitelist
+    # （它也叫 mc 但不带 compose 项目标签）并做一次性迁移。
+    container_name: mc
     restart: unless-stopped
     user: "1002:1003"
     volumes:
@@ -34,10 +34,10 @@ services:
       JWT_AUDIENCE: "${JWT_AUDIENCE:-elicloud-services}"
       # T1：令牌必须含该 scope；空串 = 关闭校验（仅本地调试）
       REQUIRED_SCOPE: "${REQUIRED_SCOPE:-mc:whitelist}"
-      DATABASE_URL: "${DATABASE_URL:-sqlite:////data/mc-whitelist.db}"
+      DATABASE_URL: "${DATABASE_URL:-sqlite:////data/mc.db}"
       RCON_HOST: "${RCON_HOST:-urania-mc}"
       RCON_PORT: "${RCON_PORT:-25575}"
-      RCON_PASSWORD: "${RCON_PASSWORD:?RCON_PASSWORD 必须由 /srv/mc-whitelist/app.env 注入（见 README-deploy.md）}"
+      RCON_PASSWORD: "${RCON_PASSWORD:?RCON_PASSWORD 必须由 /srv/mc/app.env 注入（见 README-deploy.md）}"
       RCON_TIMEOUT: "${RCON_TIMEOUT:-5}"
       MAX_NAMES_PER_USER: "${MAX_NAMES_PER_USER:-2}"
       CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}"
@@ -51,7 +51,7 @@ services:
       - "127.0.0.1:8001:8000"
     networks:
       gateway:
-      mc:
+      mcnet:
     healthcheck:
       # healthcheck 里含 RCON 可达性（§5.7）：否则"容器在跑但 RCON 挂了"不会被摘除
       test:
@@ -68,6 +68,6 @@ networks:
   gateway:
     external: true
     name: dsh-nas_dsh-net
-  mc:
+  mcnet:
     external: true
     name: mc_default

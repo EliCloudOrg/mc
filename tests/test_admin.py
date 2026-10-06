@@ -1,4 +1,4 @@
-"""管理面与对账（mc-whitelist.md §6.2、§7、决策 T2）。
+"""管理面与对账（mc.md §6.2、§7、决策 T2）。
 
 管理端点用 `ADMIN_TOKEN` 保护，**未配置时整组 403**（fail closed）；它与用户侧的
 SSO access token 是两套完全独立的凭据，不能互相替代。
