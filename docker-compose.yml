@@ -1,0 +1,72 @@
+# ============================================================
+# EliCloud MC 白名单服务 —— 部署编排（形状见 docs/mc-whitelist.md §3.3）
+#
+# 为什么是两张 external 网络：
+#   dsh-nas_dsh-net —— 网关按容器名反代（只暴露给 Caddy，不发布公网端口）
+#   mc_default      —— 连 urania-mc:25575 的 RCON（RCON 是弱认证协议，绝不暴露公网）
+#   本服务是唯一同时属于两张网的容器，因此既不用把 MC 拉进平台网络，也不用给 MC 开端口。
+#
+# 注意：
+#   1. 8000 只绑回环供本机 curl 调试；宿主机 8000 已被 sso 占用，所以这里用 8001；
+#   2. ./data 是 SQLite 落点，属主必须是 1002:1003（宿主机 docker-admin），绝不进镜像；
+#   3. RCON_PASSWORD 不写在这里：由服务器 /srv/mc-whitelist/app.env 注入（§3.5），
+#      本文件只声明「必须提供」，缺了直接启动失败（fail closed）。
+# ============================================================
+
+services:
+  mc-whitelist:
+    build:
+      context: .
+      # 镜像源可覆盖：国内服务器本地构建时用清华源（实测 1.4s vs pypi.org 12s+）
+      args:
+        PIP_INDEX_URL: "${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+    image: elicloud-mc-whitelist:1.0.0
+    container_name: mc-whitelist
+    restart: unless-stopped
+    user: "1002:1003"
+    volumes:
+      - ./data:/data
+    environment:
+      # ⚠️ 必须与 SSO 的 PUBLIC_BASE_URL 逐字一致，否则所有令牌都验签失败
+      SSO_ISSUER: "${SSO_ISSUER:-https://146.56.237.33/auth}"
+      SSO_JWKS_URL: "${SSO_JWKS_URL:-https://146.56.237.33/auth/.well-known/jwks.json}"
+      JWT_AUDIENCE: "${JWT_AUDIENCE:-elicloud-services}"
+      # T1：令牌必须含该 scope；空串 = 关闭校验（仅本地调试）
+      REQUIRED_SCOPE: "${REQUIRED_SCOPE:-mc:whitelist}"
+      DATABASE_URL: "${DATABASE_URL:-sqlite:////data/mc-whitelist.db}"
+      RCON_HOST: "${RCON_HOST:-urania-mc}"
+      RCON_PORT: "${RCON_PORT:-25575}"
+      RCON_PASSWORD: "${RCON_PASSWORD:?RCON_PASSWORD 必须由 /srv/mc-whitelist/app.env 注入（见 README-deploy.md）}"
+      RCON_TIMEOUT: "${RCON_TIMEOUT:-5}"
+      MAX_NAMES_PER_USER: "${MAX_NAMES_PER_USER:-2}"
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}"
+      # 管理接口令牌；留空 = /v1/admin/* 整组 403
+      ADMIN_TOKEN: "${ADMIN_TOKEN:-}"
+      SUBMIT_ATTEMPTS_PER_WINDOW: "${SUBMIT_ATTEMPTS_PER_WINDOW:-10}"
+      SUBMIT_WINDOW_SECONDS: "${SUBMIT_WINDOW_SECONDS:-600}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+    ports:
+      # 仅回环：本机 curl / SSH 隧道调试用，公网与 Docker 内网都不可达
+      - "127.0.0.1:8001:8000"
+    networks:
+      gateway:
+      mc:
+    healthcheck:
+      # healthcheck 里含 RCON 可达性（§5.7）：否则"容器在跑但 RCON 挂了"不会被摘除
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=8).status == 200 else 1)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  gateway:
+    external: true
+    name: dsh-nas_dsh-net
+  mc:
+    external: true
+    name: mc_default
