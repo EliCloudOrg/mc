@@ -67,28 +67,39 @@
    `ref` 填 `prod`。人工审批通过后，Actions 会把 `deploy.sh` 上传到
    `/srv/mc-whitelist/deploy.sh` 并执行。
 
-## ⚠️ 部署逻辑目前是骨架（`deploy.sh` 只打印日志）
+## ✅ 部署逻辑已写实（`deploy.sh`）
 
-框架约定 `deploy/deploy.sh` **只保留骨架**，项目特定逻辑要自己补进「项目自定义部署逻辑」段。
-本仓库现状：**该段还没有写实**，所以：
+框架约定 `deploy/deploy.sh` 保留骨架结构，项目特定逻辑补进「项目自定义部署逻辑」段。
+本仓库**已完成**：`deploy/deploy.sh` 在保留骨架注释的同时实现了本项目所需的全部步骤 ——
+snap 绕行（`/srv` 读变量、`/home` 交给 docker）、两张 external 网络预检、
+`ghcr` 拉取带超时并回退本机镜像、一次性迁移旧的手工容器、
+健康检查（含 RCON 可达性）与回环 `/healthz` 自检。
 
-- 现在跑 `Deploy to production` 会**成功但不改变线上**（脚本只 `cd /srv/mc-whitelist` + 打印）；
-- 线上当前运行的是**手工部署**的容器（见下）；
-- **可运行的实现在 [`docs/deploy-scenario.sh`](docs/deploy-scenario.sh)**，
-  它把本项目需要的完整逻辑写好了（snap 绕行、`mc_default` 网络预检、健康检查含 RCON、
-  回环自检、ghcr 拉取超时回退），移植进 `deploy/deploy.sh` 的骨架段即可。
+- **可运行副本**：[`docs/deploy-scenario.sh`](docs/deploy-scenario.sh)（与服务器上执行的是同一套逻辑，作为排错时的参照）。
+- **已实测**：首次执行把容器从手工部署迁移到 compose 管理（`PROJECT=mc-whitelist`），
+  SQLite 33 条审计全部保留；镜像最终切到 `ghcr.io/elicloudorg/mc-whitelist:prod`。
 
-### 首次「框架化」部署要注意的一次性迁移
+### 一次性迁移已完成（2026-10-06）
 
-线上容器目前是**手工部署**产生的，与框架形态有两处不同，首次框架部署必须处理：
+线上容器原先由**手工部署**产生，与框架形态有三处不同，迁移**已经执行完毕**：
 
-| | 现在（手工） | 框架化之后 |
+| | 迁移前（手工） | 现在（框架化） |
 |---|---|---|
 | 项目目录 | `/home/docker-admin/elicloud/mc-whitelist` | `/home/deploy/elicloud-mc-whitelist` |
-| compose 项目名 | 默认（目录名） | 由 `app.env` 的 `COMPOSE_PROJECT_NAME=mc-whitelist` 决定 |
+| compose 项目名 | 无（`docker run` 起的裸容器） | `COMPOSE_PROJECT_NAME=mc-whitelist`（带 compose 标签） |
 | 运行时变量 | 项目目录里的 `.env`（600） | `/srv/mc-whitelist/app.env`（600, deploy:deploy） |
+| 镜像 | 本地 `build` 的 `elicloud-mc-whitelist:1.0.0` | `ghcr.io/elicloudorg/mc-whitelist:prod` |
 
-迁移步骤（`deploy.sh` 写实后由它自动做，或手工执行）：
+`deploy.sh` 第 3 步会自动识别「同名但不属于本 compose 项目的容器」并先移除，
+所以这次迁移没有手工干预；**但 SQLite 数据必须人工搬**（脚本不碰数据）：
+
+```bash
+sudo cp -a /home/docker-admin/elicloud/mc-whitelist/data/. /home/deploy/elicloud-mc-whitelist/data/
+```
+
+> ⚠️ 这一步不能省：`mc-whitelist.db` 里是**绑定关系与审计**。丢了它，MC 侧白名单还在，
+> 但库里不认识那些名字（用户再申请同名会拿到 409 `name_taken`）。
+
 
 ```bash
 # 1) 建目录并把代码/compose 放过去（docker 需要可见 /home 路径）
@@ -246,6 +257,37 @@ gh variable set DEPLOY_MODE --body 'image'
 3. 在日志里明确打出"用的是拉取到的还是本地的镜像"，避免出现"部署成功但版本没变"。
 
 可选缓解：给 dockerd 配 `registry-mirrors`（`/var/snap/docker/common/etc/docker/daemon.json`）。
+
+### ghcr 的真实行为（实测三次，与直觉不同）
+
+| 现象 | 真实含义 | 处理 |
+|---|---|---|
+| `docker pull ghcr.io/…` 返回 **`Error response from daemon: error from registry: denied`** | **该包还不存在**（首次部署、镜像 job 还没跑过），不是权限问题 —— 包是 public 的，匿名可拉（`ghcr.io/elicloudorg/sso:prod` 就一直在匿名拉） | 先让 `Build and push image` job 跑一次（push 到 `prod` 或 `workflow_dispatch`），包创建后即可拉 |
+| pull 长时间停在 `Pulling fs layer`（实测数分钟级，`sso` 那次更久） | blob 下载慢，但**最终会成功** | `deploy.sh` 里的 `timeout 120 docker pull` 会在这时超时并回退本地镜像；**镜像已在本地时重跑一次即可切过去** |
+| `curl -s -o /dev/null -w '%{http_code}' https://ghcr.io/v2/` 返回 `401` | 匿名探测的正常响应，**不代表不可达** | 不要据此判断"ghcr 挂了" |
+
+> ⚠️ **部署顺序因此有依赖**：`DEPLOY_MODE=image` 时，**必须"先有镜像、后有部署"**。
+> 首次部署（包还不存在）时，`deploy.sh` 会走 `denied` → 回退本地镜像 →
+> **部署"成功"但线上版本没变**。这不是脚本的 bug，而是镜像模式的固有序：
+> 框架的流水线本来就是「阶段一推镜像 → 阶段二部署」，只要走完整流水线就自然满足。
+
+## 当前线上状态（2026-10-06 框架化完成）
+
+| 项 | 值 |
+|---|---|
+| 容器 | `mc-whitelist`（`/mc-whitelist`），compose 项目 `mc-whitelist`，`healthy` |
+| 镜像 | **`ghcr.io/elicloudorg/mc-whitelist:prod`**（切换前是手工构建的 `elicloud-mc-whitelist:1.0.0`） |
+| 项目目录 | `/home/deploy/elicloud-mc-whitelist`（`compose` + `data/`，`data` 属主 `1002:1003` = 容器运行用户） |
+| 运行时变量 | `/srv/mc-whitelist/app.env`（600, `deploy:deploy`） |
+| 数据 | SQLite 已从旧目录迁移：**33 条审计、3 条绑定历史全部保留** |
+| 网络 | `dsh-nas_dsh-net` + `mc_default`；仅 `127.0.0.1:8001` 回环映射 |
+| 网关 | `https://146.56.237.33/mc/healthz` → 200，`rcon.reachable=true` |
+| 旧目录 | `/home/docker-admin/elicloud/mc-whitelist`（手工部署遗留，容器已迁走；确认无用后可整目录删除，其中 `.env` 含旧的 `ADMIN_TOKEN`，**新值在 `/srv/mc-whitelist/app.env`**） |
+
+发布与回滚都走 `deploy-prod.yml`：合并到 `prod` 自动部署；回滚用
+*Actions → Deploy to production → Run workflow*，`ref` 填旧的 `sha-<short>` 或提交 SHA
+（镜像模式下阶段一会按该 ref 重新构建并推 `:prod`）。
+
 
 ## 日常发布流程
 
